@@ -22,35 +22,48 @@ from tokenizers.pre_tokenizers import Whitespace
 import torchmetrics
 from torch.utils.tensorboard import SummaryWriter
 
+import torch
+
 def greedy_decode(model, source, source_mask, tokenizer_src, tokenizer_tgt, max_len, device):
     sos_idx = tokenizer_tgt.token_to_id('[SOS]')
     eos_idx = tokenizer_tgt.token_to_id('[EOS]')
 
-    # Precompute the encoder output and reuse it for every step
-    encoder_output = model.encode(source, source_mask)
-    # Initialize the decoder input with the sos token
-    decoder_input = torch.empty(1, 1).fill_(sos_idx).type_as(source).to(device)
-    while True:
-        if decoder_input.size(1) == max_len:
-            break
+    # Passa a entrada (source) pelo encoder para obter a representação codificada
+    src_embedded = model.positional_encoding(model.encoder_embedding(source))
+    encoder_output = src_embedded
+    for enc_layer in model.encoder_layers:
+        encoder_output = enc_layer(encoder_output, source_mask)
 
-        # build mask for target
-        decoder_mask = causal_mask(decoder_input.size(1)).type_as(source_mask).to(device)
+    # Inicializa a entrada do decoder com o token SOS
+    decoder_input = torch.tensor([[sos_idx]], device=device)
 
-        # calculate output
-        out = model.decode(encoder_output, source_mask, decoder_input, decoder_mask)
+    # Começa a decodificação passo a passo
+    for _ in range(max_len):
+        # Aplica a máscara de destino, evitando a atenção futura
+        tgt_mask = (decoder_input != 0).unsqueeze(1).unsqueeze(2)
+        seq_length = decoder_input.size(1)
+        nopeak_mask = (1 - torch.triu(torch.ones(1, seq_length, seq_length), diagonal=1)).bool()
+        tgt_mask = tgt_mask & nopeak_mask
 
-        # get next token
-        prob = model.project(out[:, -1])
+        # Passa a entrada do decoder (decoder_input) pelo modelo
+        tgt_embedded = model.positional_encoding(model.decoder_embedding(decoder_input))
+        decoder_output = tgt_embedded
+        for dec_layer in model.decoder_layers:
+            decoder_output = dec_layer(decoder_output, encoder_output, source_mask, tgt_mask)
+
+        # Pega a última palavra da sequência gerada
+        prob = model.fc(decoder_output[:, -1])
         _, next_word = torch.max(prob, dim=1)
-        decoder_input = torch.cat(
-            [decoder_input, torch.empty(1, 1).type_as(source).fill_(next_word.item()).to(device)], dim=1
-        )
 
-        if next_word == eos_idx:
+        # Adiciona o próximo token à sequência gerada
+        decoder_input = torch.cat([decoder_input, next_word.unsqueeze(0).unsqueeze(0)], dim=1)
+
+        # Se o token EOS for gerado, termina a decodificação
+        if next_word.item() == eos_idx:
             break
 
     return decoder_input.squeeze(0)
+
 
 
 def run_validation(model, validation_ds, tokenizer_src, tokenizer_tgt, max_len, device, print_msg, global_step, writer, num_examples=2):
@@ -173,7 +186,7 @@ def get_ds(config):
     return train_dataloader, val_dataloader, tokenizer_src, tokenizer_tgt
 
 def get_model(config, vocab_src_len, vocab_tgt_len):
-    model = Transformer(vocab_src_len, vocab_tgt_len, config['d_model'], 8, 6, 2048, 200, 0.1)
+    model = Transformer(src_vocab_size=vocab_src_len, tgt_vocab_size=vocab_tgt_len, d_model=config['d_model'], num_heads=8, num_layers=6, d_ff=2048, max_seq_length=200, dropout=0.1)
     return model
 
 def train_model(config):
