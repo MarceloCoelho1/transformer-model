@@ -60,3 +60,13 @@ class MultiHeadAttention(nn.Module):
     # Combine heads and apply output transformation
     output = self.W_o(self.combine_heads(attn_output))
     return output
+
+class PositionWiseFeedForward(nn.Module):
+  def __init__(self, d_model, d_ff):
+    super(PositionWiseFeedForward, self).__init__()
+    self.fc_1 = nn.Linear(d_model, d_ff)
+    self.fc_2 = nn.Linear(d_ff, d_model)
+    self.relu = nn.ReLU()
+
+  def forward(self, x):
+    return self.fc_2(self.relu(self.fc_1(x)))
