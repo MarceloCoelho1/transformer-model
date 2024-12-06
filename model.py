@@ -25,7 +25,7 @@ class MultiHeadAttention(nn.Module):
 
   def scaled_dot_product_attention(self, Q, K ,V, mask=None):
     # calculate attention scores
-    attn_scores = torch.mul(Q, K.transpose(-2, -1)) / math.sqrt(self.d_k)
+    attn_scores = torch.matmul(Q, K.transpose(-2, -1)) / math.sqrt(self.d_k)
 
     # Apply mask if provided (useful for preventing attention to certain parts like padding)
     if mask is not None:
@@ -35,7 +35,7 @@ class MultiHeadAttention(nn.Module):
     attn_scores = torch.softmax(attn_scores, dim=-1)
 
     # multiply by values to obtain final output
-    output = torch.mul(attn_scores, V)
+    output = torch.matmul(attn_scores, V)
     return output
   
   def split_heads(self, x):
@@ -108,7 +108,7 @@ class DecoderLayer(nn.Module):
     super(DecoderLayer, self).__init__()
     self.self_attn = MultiHeadAttention(d_model, num_heads)
     self.cross_attn = MultiHeadAttention(d_model, num_heads)
-    self.feed_foward = PositionWiseFeedForward(d_model, d_ff)
+    self.feed_forward = PositionWiseFeedForward(d_model, d_ff)
     self.norm1 = nn.LayerNorm(d_model)
     self.norm2 = nn.LayerNorm(d_model)
     self.norm3 = nn.LayerNorm(d_model)
@@ -151,11 +151,11 @@ class Transformer(nn.Module):
 
     enc_output = src_embedded
     for enc_layer in self.encoder_layers:
-        enc_output = enc_layer(enc_output, src_mask)
+      enc_output = enc_layer(enc_output, src_mask)
 
     dec_output = tgt_embedded
     for dec_layer in self.decoder_layers:
-        dec_output = dec_layer(dec_output, enc_output, src_mask, tgt_mask)
+      dec_output = dec_layer(dec_output, enc_output, src_mask, tgt_mask)
 
     output = self.fc(dec_output)
     return output
