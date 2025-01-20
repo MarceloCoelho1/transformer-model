@@ -1,2 +1,6 @@
 /transformer-env
 __pycache__
+.vscode
+/fan
+/SyntheticTimeSeriesDataset
+playground.py
