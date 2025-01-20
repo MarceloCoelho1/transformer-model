@@ -4,7 +4,7 @@ import time
 from torch.utils.data import DataLoader
 from dataset import AcousticDatasetId
 from sklearn.metrics import roc_auc_score
-from anomalyGPT import AnomalyGPT
+from models.anomalyGPT import AnomalyGPT
 from mtsa.utils import files_train_test_split
 from sklearn import metrics
 
