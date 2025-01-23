@@ -3,18 +3,22 @@ import torch.nn as nn
 import time
 from torch.utils.data import DataLoader
 from dataset import AcousticDatasetId
-from sklearn.metrics import roc_auc_score
 from models.anomalyGPT import AnomalyGPT
+from models.anomalyGptWithTorch import build_transformer
 from mtsa.utils import files_train_test_split
 from sklearn import metrics
-
+import numpy as np
+import matplotlib.pyplot as plt
 
 
 device = torch.device("cuda")
-def run_experiment():
+
+
+def run_experiment(model, lr, epoch, batch_size, path):
   torch.cuda.empty_cache()
 
-  model = AnomalyGPT(mfcc_dim=20, d_model=512, num_heads=8, num_layers=6, d_ff=2048, max_seq_length=313, dropout=0.1, device=device).to(device)
+  model = build_transformer(mfcc_dim=20, d_model=128, nhead=2, num_encoder_layers=2, num_decoder_layers=2,
+                            dim_feedforward=1024, dropout=0.1, batch_first=True, device=device).to(device)
 
   path = "/data/MIMII/fan/id_04"
 
@@ -23,28 +27,18 @@ def run_experiment():
   # abnormal == 0
   train_dataset = AcousticDatasetId(X_train, y_train, sampling_rate=16000, mono=True)
   val_dataset = AcousticDatasetId(X_test, y_test, sampling_rate=16000, mono=True)
-  
   learning_rate = 0.001
-  epochs=15
+  epochs = 15
   batch_size = 16
 
   train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-  val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+  val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True)
   train(train_loader, val_loader, learning_rate, model, epochs, device)
 
-  
+
 def train(train_loader, val_loader, learning_rate, model, epochs, device):
   criterion_reconstruction = nn.MSELoss()
-  # optimizer = NoamOpt(
-  #   model_size=256,  # d_model do seu modelo
-  #   factor=2,        # Ajuste conforme necessário (2 é um valor comum)
-  #   warmup=4000,     # Número de passos de warmup (experimente valores diferentes)
-  #   optimizer=torch.optim.Adam(model.parameters(), lr=0, betas=(0.9, 0.98), eps=1e-9)
-  # )
   optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, betas=(0.9, 0.98), eps=1e-9)
-
-
-
 
   for epoch in range(epochs):
     model.train()
@@ -68,7 +62,6 @@ def train(train_loader, val_loader, learning_rate, model, epochs, device):
     elapsed_time = time.time() - start_time
     print(f"Epoch {epoch + 1}/{epochs} | Loss: {loss.item():.4f} | Time: {elapsed_time:.2f}s")
     validate(model, val_loader, device)
-    
 
 
 def validate(model, val_loader, device):
@@ -102,33 +95,16 @@ def validate(model, val_loader, device):
   auc = metrics.auc(fpr, tpr)
   print(f"Validation ROC AUC: {auc}")
 
-class NoamOpt:
-  "Optim wrapper that implements rate."
-  def __init__(self, model_size, factor, warmup, optimizer):
-    self.optimizer = optimizer
-    self._step = 0
-    self.warmup = warmup
-    self.factor = factor
-    self.model_size = model_size
-    self._rate = 0
-      
-  def step(self):
-    "Update parameters and rate"
-    self._step += 1
-    rate = self.rate()
-    for p in self.optimizer.param_groups:
-        p['lr'] = rate
-    self._rate = rate
-    self.optimizer.step()
-      
-  def rate(self, step = None):
-    "Implement `lrate` above"
-    if step is None:
-      step = self._step
-    return self.factor * (self.model_size ** (-0.5) * min(step ** (-0.5), step * self.warmup ** (-1.5)))
-    
-def get_std_opt(model):
-  return NoamOpt(model.src_embed[0].d_model, 2, 4000,
-    torch.optim.Adam(model.parameters(), lr=0, betas=(0.9, 0.98), eps=1e-9))
 
-run_experiment()
+if __name__ == "__main__":
+
+  model = build_transformer(mfcc_dim=20, d_model=128, nhead=2, num_encoder_layers=2, num_decoder_layers=2,
+                            dim_feedforward=1024, dropout=0.1, batch_first=True, device=device).to(device)
+
+  path = ["/data/MIMII/fan/id_04"]
+
+  learning_rate = [0.001, 0.0001]
+  epochs = [15, 20, 25]
+  batch_size = [16, 32]
+
+  run_experiment()
